@@ -127,9 +127,12 @@ define([
         this.$container.find('.cell').each(function(idx) {
             // Gridstack expects horizontal margins to be handled within the cell. To accomplish
             // that, we need to wrap the cell contents in an element.
+            // Also, we add a separate div to show the border, since we want to show that above
+            // the cell contents. This is necessary since cell contents may overflow the cell
+            // bounds, but we still want to show the user those boundaries.
             var el = $(this);
             if (el.find('> .dashboard-item-background').length === 0) {
-                el.prepend('<div class="dashboard-item-background">');
+                el.prepend('<div class="dashboard-item-background"/><div class="dashboard-item-border"/>');
             }
 
             var metadata = self._getCellMetadata(el);
@@ -168,7 +171,7 @@ define([
 
         if (typeof this.opts.onResize === 'function') {
             var self = this;
-            this.$container.on('resizestop', function(event, ui) {
+            this.$container.on('dragstop resizestop', function(event, ui) {
                 // Gridstack fires this event before the resizing animation has finished
                 // (see https://github.com/troolee/gridstack.js/issues/159). Temporary workaround
                 // is to fire our callback after the resize transition has finished.
@@ -184,13 +187,13 @@ define([
         var styleRules = [
             // position background across cell, with margins on sides
             {
-                selector: '.grid-stack .grid-stack-item .dashboard-item-background',
+                selector: '.grid-stack .grid-stack-item .dashboard-item-background, .grid-stack .grid-stack-item .dashboard-item-border',
                 rules: 'left: ' + halfMargin + 'px; right: ' + halfMargin + 'px;'
             },
 
             // set horizontal margin on cell contents
             {
-                selector: '.grid-stack .grid-stack-item.cell > :not(.dashboard-item-background):not(.ui-resizable-handle):not(.grid-control-container)',
+                selector: '.grid-stack .grid-stack-item.cell > :not(.dashboard-item-background):not(.dashboard-item-border):not(.ui-resizable-handle):not(.grid-control-container)',
                 rules: 'margin: 0 ' + halfMargin + 'px;'
             },
 
@@ -226,6 +229,10 @@ define([
     };
 
     Dashboard.prototype._repositionHiddenCells = function() {
+        if (!this.interactive) {
+            return;
+        }
+
         var offsetpx = $('#dashboard-hidden-header').outerHeight();
 
         // recalculate hidden cells offsets
@@ -457,6 +464,12 @@ define([
         IPython.notebook.set_dirty(true);
     };
 
+    Dashboard.prototype._onResize = function(node) {
+        if (typeof this.opts.onResize === 'function') {
+            this.opts.onResize(node);
+        }
+    };
+
     Dashboard.prototype._hideCell = function($cell, batch) {
         var self = this;
         this.$container.one('change', function() {
@@ -477,6 +490,7 @@ define([
             // cell's width increases). We need to recalculate the cell offsets after the
             // transition has finished.
             $cell.one('transitionend', function() {
+                self._onResize($cell.get(0));
                 self._repositionHiddenCells();
             });
         });
@@ -495,6 +509,12 @@ define([
             left: ''
         });
 
+        // notify contents that cell may have been resized
+        var self = this;
+        $cell.one('transitionend', function() {
+            self._onResize($cell.get(0));
+        });
+
         if (this.$container.find('.cell:not(.grid-stack-item)').length === 0) {
             this.$hiddenHeader.addClass('hidden');
         }
@@ -510,11 +530,6 @@ define([
             height: grid.height
         };
         this._updateCellMetadata($cell, layout, batch);
-
-        // notify contents that cell may have been resized
-        if (typeof this.opts.onResize === 'function') {
-            this.opts.onResize($cell.get(0));
-        }
     };
 
     Dashboard.prototype._toggleHiddenCellCode = function(event) {
@@ -558,11 +573,16 @@ define([
     Dashboard.prototype.setInteractive = function(args) {
         this._loaded.then(function() {
             this.gridstack.set_static(!args.enable);
+            this.interactive = !!args.enable;
             if (args.enable) {
                 this.gridstack.enable();
+                this._repositionHiddenCells();
             } else {
                 this.gridstack.disable();
+                // clear the notebook height
+                $('#notebook').css('height', '');
             }
+
             // if enabling grid, need to wait for resize transition to finish
             if (typeof args.complete === 'function') {
                 setTimeout(args.complete, args.enable ? RESIZE_DURATION : 0);
@@ -580,16 +600,34 @@ define([
         this.gridstack.destroy(false /* detach_node */);
         this.$container.removeData('gridstack'); // remove stored instance, so we can re-init
 
+        // remove all data-gs-* attributes
+        this.$container.find('> .cell').each(function() {
+            var attrs = this.attributes;
+            var toRemove = [];
+            for (var attr in attrs) {
+                if (typeof attrs[attr] === 'object' &&
+                        typeof attrs[attr].name === 'string' &&
+                        (/^data-gs/).test(attrs[attr].name)) {
+                    toRemove.push(attrs[attr].name);
+                }
+            }
+            for (var i = 0; i < toRemove.length; i++) {
+                this.removeAttribute(toRemove[i]);
+            }
+        });
+
         $('.grid-stack-item')
                 .resizable('destroy').draggable('destroy')
-                .removeClass('ui-resizable-autoHide'); // jquery bug, cannot remove class using API
+                .removeClass('ui-resizable-autohide'); // jquery bug, cannot remove class using API
 
         $('.dashboard-item-background').remove();
+        $('.dashboard-item-border').remove();
 
         $('.grid-stack').removeClass('grid-stack');
         $('.grid-stack-item').removeClass('grid-stack-item');
         $('.grid-control-container').remove();
         this.$hiddenHeader.remove();
+        $('#notebook').css('height', '');
         $('#notebook-container').css('width', '').css('height', '');
         $('body').removeClass('urth-dashboard');
     };
