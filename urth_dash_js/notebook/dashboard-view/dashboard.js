@@ -43,6 +43,8 @@ define([
     var HIDDEN_CELLS_MARGIN = 10;
     var HIDDEN_CELLS_BOTTOM_MARGIN = 20;
 
+    var DRAG_HANDLE = '.drag-handle';
+
     var Dashboard = function(opts) {
         this.$container = $(opts.container);
         this.opts = opts;
@@ -132,7 +134,7 @@ define([
             // bounds, but we still want to show the user those boundaries.
             var el = $(this);
             if (el.find('> .dashboard-item-background').length === 0) {
-                el.prepend('<div class="dashboard-item-background"/><div class="dashboard-item-border"/>');
+                el.prepend('<div class="dashboard-item-background"/><div class="dashboard-item-border"><i class="fa fa-arrows"/></div>');
             }
 
             var metadata = self._getCellMetadata(el);
@@ -160,7 +162,7 @@ define([
                 // `setInteractive`).
                 animate: false,
                 draggable: {
-                    handle: '.drag-handle',
+                    handle: DRAG_HANDLE,
                     scroll: true
                 },
                 resizable: {
@@ -297,8 +299,7 @@ define([
     };
 
     // Update cell's metadata.
-    // Set `batch` to true if updating multiple cells. Will need to call `set_dirty` afterwards.
-    Dashboard.prototype._updateCellMetadata = function($cell, layout, batch) {
+    Dashboard.prototype._updateCellMetadata = function($cell, layout) {
         var metadata = this._getCellMetadata($cell);
         if (layout) {
             metadata.urth.dashboard.layout = layout;
@@ -307,9 +308,7 @@ define([
             delete metadata.urth.dashboard.layout;
             metadata.urth.dashboard.hidden = true;
         }
-        if (!batch) {
-            IPython.notebook.set_dirty(true);
-        }
+        IPython.notebook.set_dirty(true);
     };
 
     // For a given DOM element, return the Notebook cell which contains it. Works with both
@@ -338,7 +337,8 @@ define([
                     self._hideCell(self._getParentCell(this));
                 });
             gc.find('.add-btn').click(function() {
-                    self._showCell(self._getParentCell(this));
+                    // show a single cell at full width
+                    self._showCell(self._getParentCell(this), { width: self.opts.numCols });
                 });
             gc.find('.edit-btn').click(function() {
                     var $cell = self._getParentCell(this);
@@ -417,6 +417,9 @@ define([
     /**
      * Computes the minimum number of rows & columns needed to show the specified cells contents.
      * @param  {jQuery} $cell - Cell to measure
+     * @param  {Object} [constraints] - Fix one of the dimensions, only calculate the other
+     * @param  {number} [constraints.width] - Fix width to given number of columns
+     * @param  {number} [constraints.height] - Fix height to given number of rows
      * @return {Object} Object of the form:
      *                     {
      *                         width: <number of columns>,
@@ -424,20 +427,23 @@ define([
      *                         isEmpty: <true if cell has no visible contents, else false>
      *                     }
      */
-    Dashboard.prototype._computeCellDimensions = function($cell) {
+    Dashboard.prototype._computeCellDimensions = function($cell, constraints) {
+        constraints = typeof constraints === 'undefined' ? {} : constraints;
+        var x = constraints.width || this.opts.defaultCellWidth;
+        var y = constraints.height || this.opts.defaultCellHeight;
         $cell.css({
-            width: this.opts.defaultCellWidth * (this._cellMinWidthPX + this.opts.gridMargin) - this.opts.gridMargin,
-            height: this.opts.defaultCellHeight * (this.opts.rowHeight + this.opts.gridMargin) - this.opts.gridMargin,
+            width: x * (this._cellMinWidthPX + this.opts.gridMargin) - this.opts.gridMargin,
+            height: y * (this.opts.rowHeight + this.opts.gridMargin) - this.opts.gridMargin,
             transition: 'none', // disable transitions to allow proper width/height calculations
             display: 'block' // override `display:flex` set by Notebook CSS to allow proper calcs
         });
 
-        var dim = this._compute_cell_dim($cell, this.opts.defaultCellWidth, this.opts.defaultCellHeight);
+        var dim = this._compute_cell_dim($cell, x, y);
 
         // for text cells, if they are taller than the default, recalculate with max width
-        if ($cell.hasClass('text_cell') && dim.height > this.opts.defaultCellHeight) {
+        if ($cell.hasClass('text_cell') && dim.height > y) {
             $cell.css({ width: this.opts.numCols * this._cellMinWidthPX });
-            dim = this._compute_cell_dim($cell, this.opts.numCols, this.opts.defaultCellHeight);
+            dim = this._compute_cell_dim($cell, this.opts.numCols, y);
         }
 
         $cell.css({ width: '', height: '', transition: '', display: '' });
@@ -460,7 +466,7 @@ define([
         var self = this;
         $('.cell.grid-stack-item').each(function(idx) {
             var layout = $.extend({}, widgetData[idx]);  // clone `data` object
-            self._updateCellMetadata($(this), layout, true);
+            self._updateCellMetadata($(this), layout);
         });
 
         IPython.notebook.set_dirty(true);
@@ -472,12 +478,12 @@ define([
         }
     };
 
-    Dashboard.prototype._hideCell = function($cell, batch) {
+    Dashboard.prototype._hideCell = function($cell) {
         var self = this;
         this.$container.one('change', function() {
             $cell.resizable('destroy');
             $cell.draggable('destroy');
-            self._updateCellMetadata($cell, null, batch);
+            self._updateCellMetadata($cell, null);
             // Temporarily set 'top' *before* removing 'grid-stack-item' class. This makes it so
             // cell animates when moving from dashboard to hidden cells area.
             $cell.css({
@@ -500,8 +506,9 @@ define([
     };
 
     // move cell from hidden table to main grid
-    Dashboard.prototype._showCell = function($cell, batch) {
-        var dim = this._computeCellDimensions($cell);
+    Dashboard.prototype._showCell = function($cell, constraints) {
+        // compute correct dimensions (taking into account any given `constraints`)
+        var dim = this._computeCellDimensions($cell, constraints);
 
         this.gridstack.add_widget($cell, 0, 0, dim.width, dim.height, true, false /* attach_node */);
         this._initVisibleCell($cell);
@@ -531,7 +538,7 @@ define([
             width: grid.width,
             height: grid.height
         };
-        this._updateCellMetadata($cell, layout, batch);
+        this._updateCellMetadata($cell, layout);
     };
 
     Dashboard.prototype._toggleHiddenCellCode = function(event) {
@@ -550,7 +557,7 @@ define([
         this.$container
             .find('.cell:not(.grid-stack-item)')
             .each(function() {
-                self._showCell($(this), true /* batch */);
+                self._showCell($(this));
             });
         IPython.notebook.set_dirty(true);
     };
@@ -563,7 +570,7 @@ define([
         this.$container
             .find('.cell.grid-stack-item')
             .each(function() {
-                self._hideCell($(this), true /* batch */);
+                self._hideCell($(this));
             });
         IPython.notebook.set_dirty(true);
     };
@@ -577,26 +584,39 @@ define([
             this.gridstack.set_static(!args.enable);
             this.gridstack.set_animation(args.enable);
             this.interactive = !!args.enable;
+
             if (args.enable) {
                 this.gridstack.enable(); // enable widgets moving/resizing
+                $(window).on('keydown.Dashboard keyup.Dashboard', this._onShiftKey.bind(this));
                 this._repositionHiddenCells();
             } else {
                 this.gridstack.disable(); // disable widgets moving/resizing
-                // clear the notebook height
-                $('#notebook').css('height', '');
+                $(window).off('keydown.Dashboard keyup.Dashboard');
+                $('#notebook').css('height', ''); // clear the notebook height
             }
 
             if (typeof args.complete === 'function') {
-                args.complete();
+                // call `complete` asynchronously, since we need to let Gridstack to finish
+                // fully rendering
+                setTimeout(args.complete, 0);
             }
         }.bind(this));
+    };
+
+    // when shift key is held down (only in Dashboard Layout), allow dragging from full cell body
+    Dashboard.prototype._onShiftKey = function(e) {
+        var allCellDragEnable = e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey;
+        $(document.body).toggleClass('all_cell_drag', allCellDragEnable);
+        // set draggable area to either full cell or the smaller drag handle
+        var handle = allCellDragEnable ? '.dashboard-item-border' : DRAG_HANDLE;
+        this.$container.find('> .grid-stack-item').draggable('option', 'handle', handle);
     };
 
     /**
      * Delete dashboard resources
      */
     Dashboard.prototype.destroy = function() {
-        $(window).off('resize.Dashboard');
+        $(window).off('resize.Dashboard keydown.Dashboard keyup.Dashboard');
 
         this.gridstack.removeStylesheet();
         this.gridstack.destroy(false /* detach_node */);

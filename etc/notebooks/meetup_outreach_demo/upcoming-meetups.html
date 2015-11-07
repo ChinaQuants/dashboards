@@ -64,13 +64,13 @@
                 color: green;
             }
             :host .meetup-row .change.positive .arrow:before {
-                content: "\f176";
+                content: "\2b06";
             }
             :host .meetup-row .change.negative {
                 color: red;
             }
             :host .meetup-row .change.negative .arrow:before {
-                content: "\f175";
+                content: "\2b07";
             }
         </style>
 
@@ -96,7 +96,7 @@
                         <span class="city">[[item.venue_loc]]</span>
                         <span class="rsvp-count">[[item.yes_rsvp_count]]</span>
                         <span class$="[[getChangeOverTimeClass(item.change_over_time)]]">
-                            <span class="fa arrow"></span>
+                            <span class="arrow"></span>
                             <span>[[getChangeOverTime(item.change_over_time)]]</span>
                         </span>
                     </paper-material>
@@ -122,6 +122,14 @@
                     type: String,
                     value: ''
                 }
+            },
+
+            behaviors: [
+                Polymer.IronResizableBehavior
+            ],
+
+            listeners: {
+                'iron-resize': '_onResize'
             },
 
             created: function() {
@@ -153,6 +161,16 @@
                 }
                 // zero is also a valid value, but has no class
                 return cls;
+            },
+
+            _onResize: function(event) {
+                if (this._resizing) {
+                    return;
+                }
+                this._resizing = true;
+                // notify descendants to resize
+                this.notifyResize();
+                this._resizing = false;
             }
         });
     })();
