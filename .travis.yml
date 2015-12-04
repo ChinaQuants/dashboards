@@ -3,26 +3,30 @@ sudo: required
 language: python
 
 python:
-    - 3.4
+- 3.4
 
 services:
-  - docker
+- docker
 
-before_install:
-- sudo apt-get update -qq
-- sudo apt-get install -y nodejs
-- docker pull cloudet/pyspark-notebook-bower
-
-install:
-  - npm install
+addons:
+  sauce_connect:
+    no_ssl_bump_domains: all
 
 script:
-- make test
+- make build
+- make test-python2
+- make test-python3
 - make sdist
-- make install
+- make install-python2
+- make install-python3
+- if [[ -n "$SAUCE_USERNAME" ]]; then make system-test-remote; fi
 
 notifications:
   email:
     on_success: change
     on_failure: always
   slack: cloudet:rMfRKhvsbZuCIRZpTct3kBI4
+
+branches:
+  only:
+    - master

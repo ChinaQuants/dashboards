@@ -11,8 +11,8 @@ import errno
 import fnmatch
 import glob
 from tempfile import mkdtemp
-from IPython.utils.path import get_ipython_dir
-import IPython.nbformat as nbformat
+from jupyter_core.paths import jupyter_data_dir
+import nbformat
 
 # Absolute path to nbconvert templates
 TEMPLATES_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), 'jinja_templates'))
@@ -68,7 +68,7 @@ def to_php_app(notebook_fn, app_location=None, template_fn=None):
     # Copy static assets for Thebe
     shutil.copytree(STATICS_PATH, os.path.join(output_path, 'static'))
     # Copy static assets for dashboard layout
-    deps = os.path.join(get_ipython_dir(), 'nbextensions/urth_dash_js/notebook')
+    deps = os.path.join(jupyter_data_dir(), 'nbextensions/urth_dash_js/notebook')
     components = [
         'bower_components/gridstack/dist/gridstack.min.css',
         'bower_components/gridstack/dist/gridstack.min.js',
@@ -162,9 +162,19 @@ def add_cf_manifest(output_path, kernel_server_url, app_name, tmpnb_mode):
             tmpnb_mode=tmpnb_mode
         ))
 
+def cell_uses_widgets(cell_source):
+    '''
+    Looks for urth-core-import in the cell and returns True if it is found,
+    False otherwise.
+    '''
+    # Using find instead of a regex to help future-proof changes that might be
+    # to how user's will use urth-core-import
+    # (i.e. <link is=urth-core-import> vs. <urth-core-import>)
+    return False if cell_source.find('urth-core-import') == -1 else True
+
 def add_urth_widgets(output_path, notebook_file):
     '''
-    Adds fronted bower components dependencies into the bundle for the dashboard
+    Adds frontend bower components dependencies into the bundle for the dashboard
     application. Creates the following directories under output_path:
 
     static/urth_widgets: Stores the js for urth_widgets which will be loaded in
@@ -178,13 +188,19 @@ def add_urth_widgets(output_path, notebook_file):
     :param output_path: The output path of the dashboard being assembled
     :param notebook_file: The absolute path to the notebook file being packaged
     '''
-    ipython_dir = get_ipython_dir()
+    ipython_dir = jupyter_data_dir()
     # Root of urth widgets within Jupyter
     urth_widgets_dir = os.path.join(ipython_dir, 'nbextensions/urth_widgets')
     # JavaScript entry point for widgets in Jupyter
     urth_widgets_js_dir = os.path.join(urth_widgets_dir, 'js')
     if not os.path.isdir(urth_widgets_dir):
         # urth widgets not installed so skip
+        return
+
+    # Check if any of the cells contain widgets, if not we do not to copy the bower_components
+    notebook = nbformat.read(notebook_file, 4)
+    any_cells_with_widgets = any(cell_uses_widgets(cell.get('source')) for cell in notebook.cells)
+    if not any_cells_with_widgets:
         return
 
     # Root of urth widgets within a dashboard app
@@ -198,7 +214,7 @@ def add_urth_widgets(output_path, notebook_file):
     # static/urth_widgets
     shutil.copytree(urth_widgets_js_dir, output_js_dir)
 
-    # Install the bower componentsin the urth
+    # Install the bower components into the urth_components directory
     shutil.copytree(os.path.join(urth_widgets_dir, 'bower_components'), output_urth_components_dir)
 
 
@@ -216,7 +232,8 @@ def to_thebe_html(path, env_vars, fmt, cwd, template_fn):
     proc = subprocess.Popen([
             'ipython',
             'nbconvert',
-            '--quiet',
+            '--log-level',
+            'ERROR',
             '--stdout',
             '--TemplateExporter.template_path=["{}"]'.format(TEMPLATES_PATH),
             '--template',

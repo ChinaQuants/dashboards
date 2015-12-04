@@ -5,10 +5,8 @@
 
 /* hide extraneous cell parts when in dashboard view  */
 .urth-dashboard .celltoolbar,
-.urth-dashboard .container .cell.grid-stack-item > .input,
-.urth-dashboard .container:not(.show-code) .cell:not(.grid-stack-item) > .input,
-.urth-dashboard .container .cell.grid-stack-item .prompt ,
-.urth-dashboard .container:not(.show-code) .cell:not(.grid-stack-item) .prompt {
+.urth-dashboard.view-only .grid-stack .cell.grid-stack-item > .input,
+.urth-dashboard .container .cell .prompt {
     display: none !important; /* Necessary to override inline style set by notebook */
 }
 
@@ -16,8 +14,8 @@
 .grid-stack#notebook-container {
     padding-left: 0;
     padding-right: 0;
-    transition: background-color 0.75s 0.25s,
-                box-shadow 0.75s 0.25s,
+    transition: background-color 0.75s,
+                box-shadow 0.75s,
                 height 0.3s;
 }
 body:not(.view-only) .grid-stack#notebook-container:hover {
@@ -50,6 +48,27 @@ body:not(.view-only) .grid-stack#notebook-container:hover {
         padding: 0 (margin/2)px;
      */
 }
+.urth-dashboard:not(.view-only) .grid-stack .cell.grid-stack-item > .input {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    padding: 0.5em 1em;
+    overflow: hidden;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+.urth-dashboard:not(.view-only) .grid-stack:not(.hide-code):not(:hover) .cell.grid-stack-item > .input {
+    /*display: none;*/
+}
+.urth-dashboard:not(.view-only) .grid-stack:not(.hide-code):hover .cell.grid-stack-item > .input {
+    opacity: 0.3;
+}
+.urth-dashboard:not(.view-only) .grid-stack:not(.hide-code) .cell.grid-stack-item > .input div.input_area {
+    border: none;
+    background: none;
+}
 .grid-stack .dashboard-item-background,
 .grid-stack .dashboard-item-border {
     position: absolute;
@@ -57,7 +76,7 @@ body:not(.view-only) .grid-stack#notebook-container:hover {
     top: 0;
     bottom: 0;
     z-index: -1;
-    transition: box-shadow 0.75s 0.25s;
+    transition: box-shadow 0.75s;
 
     /*
         computed by gridstack-custom:
@@ -68,8 +87,12 @@ body:not(.view-only) .grid-stack#notebook-container:hover {
 }
 .grid-stack .dashboard-item-border {
     background-color: transparent;
+    color: transparent;
     z-index: 10;
     pointer-events: none; /* "pass through" mouse events */
+    transition: background-color 0.2s,
+                color 0.2s,
+                box-shadow 0.75s;
 }
 .grid-stack .cell:not(.grid-stack-item) .dashboard-item-background,
 .grid-stack .cell:not(.grid-stack-item) .dashboard-item-border {
@@ -173,17 +196,39 @@ body.dragging.urth-dashboard .ui-draggable-dragging.cell:hover .drag-handle:hove
     display: none;
 }
 
+/* drag/drop cell overlay*/
+.urth-dashboard.all_cell_drag:not(.view-only) .grid-stack-item .dashboard-item-border {
+    display: -webkit-flex;
+    display: -ms-flexbox;
+    display: flex;
+    -webkit-justify-content: center;
+        -ms-flex-pack: center;
+            justify-content: center;
+    -webkit-align-items: center;
+        -ms-flex-align: center;
+            align-items: center;
+    background-color: rgba(255, 255, 255, 0.9);
+    color: #b2b2b2;
+    font-size: 50px;
+    pointer-events: auto;
+}
+.urth-dashboard.all_cell_drag:not(.view-only) .grid-stack-item .dashboard-item-border:hover {
+    cursor: -webkit-grab;
+    cursor: grab;
+}
+.urth-dashboard.all_cell_drag:not(.view-only) .grid-stack-item .grid-control-container,
+.urth-dashboard.all_cell_drag:not(.view-only) .grid-stack-item .ui-resizable-handle {
+    display: none !important; /* important needed to override inline style set by gridstack */
+}
+.urth-dashboard:not(.all_cell_drag):not(.view-only) .dashboard-item-border i,
+.urth-dashboard .grid-stack > .cell:not(.grid-stack-item) .dashboard-item-border i {
+    display: none;
+}
+
 /* Hidden Cells */
 .urth-dashboard #dashboard-hidden-header {
     height: 150px;
     padding: 15px;
-}
-
-.grid-stack .cell:not(.grid-stack-item) {
-    position: absolute;
-    min-height: 100px;
-
-    transition: left 0.3s, top 0.3s, height 0.3s, width 0.3s;
 }
 
 .urth-dashboard #dashboard-hidden-header .header {
@@ -202,6 +247,18 @@ body.dragging.urth-dashboard .ui-draggable-dragging.cell:hover .drag-handle:hove
 .urth-dashboard #dashboard-hidden-header .header .btn:not(.btn-info) {
     background-color: transparent;
     border: 1px solid black;
+}
+
+.grid-stack .cell:not(.grid-stack-item) {
+    position: absolute;
+    min-height: 100px;
+
+    transition: left 0.3s, top 0.3s, height 0.3s, width 0.3s;
+}
+
+.grid-stack .cell.code_cell:not(.grid-stack-item) .input_area {
+    max-height: 200px;
+    overflow: scroll;
 }
 
 /* static view */
